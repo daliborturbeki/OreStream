@@ -1,10 +1,12 @@
 mod handlers;
 mod state;
+mod config;
 
 use arete_sdk::prelude::*;
 use axum::{routing::get, Router};
 use ore_stack::{OreRound, OreStreamStack};
 use tracing::info;
+use crate::config::Config;
 
 fn print_round(round: &OreRound) {
     info!(
@@ -19,20 +21,18 @@ fn print_round(round: &OreRound) {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
+    let config = Config::from_env();
 
     tracing_subscriber::fmt()
         .with_env_filter("info")
         .init();
-
-    let api_key = std::env::var("ARETE_API_KEY")
-        .expect("ARETE_API_KEY must be set in .env or environment");
 
     let app_state = state::AppState::new();
 
     info!("Connecting to Ore stream...");
 
     let a4 = Arete::<OreStreamStack>::builder()
-        .api_key(&api_key)
+        .api_key(&config.arete_api_key)
         .connect()
         .await?;
 
@@ -56,8 +56,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/ws/live", get(handlers::ws_live))
         .with_state(app_state);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
-    info!("HTTP server listening on http://0.0.0.0:3000");
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", config.port)).await?;
+    info!("HTTP server listening on http://0.0.0.0:{}", config.port);
 
     axum::serve(listener, app).await?;
 

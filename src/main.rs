@@ -1,6 +1,7 @@
 mod handlers;
 mod state;
 mod config;
+mod db;
 
 use arete_sdk::prelude::*;
 use axum::{routing::get, Router};
@@ -27,7 +28,12 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter("info")
         .init();
 
-    let app_state = state::AppState::new();
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(10)
+        .connect(&config.database_url)
+        .await?;
+
+    let app_state = state::AppState::new(pool);
 
     info!("Connecting to Ore stream...");
 
@@ -46,6 +52,9 @@ async fn main() -> anyhow::Result<()> {
                 continue;
             }
             print_round(&round);
+            if let Err(e) = crate::db::insert_round(&stream_state.db, &round).await {
+                tracing::warn!(error = %e, "failed to insert round");
+            }
             *stream_state.latest_round.write().await = Some(round.clone());
             let _ = stream_state.round_tx.send(round);
         }
